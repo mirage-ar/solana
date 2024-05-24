@@ -3,12 +3,16 @@ use anchor_lang::prelude::*;
 // The pot account holds the total amount of lamports in the pot
 #[account]
 pub struct PotAccount {
+    // JON: Since you just end up writing the authority ID, which is hard-coded
+    // in the program, you could completely remove the state on this account.
     pub authority: Pubkey,
 }
 
 // The protocol account holds the protocol fees
 #[account]
 pub struct ProtocolAccount {
+    // JON: Since you just end up writing the authority ID, which is hard-coded
+    // in the program, you could completely remove all state on this account.
     pub authority: Pubkey,
 }
 
@@ -31,7 +35,7 @@ pub struct TokenAccount {
 #[derive(Accounts)]
 pub struct Initialize<'info> {
     #[account(
-        init, 
+        init,
         payer = authority,
         seeds = [b"POT"],
         bump,
@@ -40,7 +44,7 @@ pub struct Initialize<'info> {
     pub pot: Account<'info, PotAccount>,
 
     #[account(
-        init, 
+        init,
         payer = authority,
         seeds = [b"PROTOCOL"],
         bump,
@@ -57,7 +61,7 @@ pub struct Initialize<'info> {
 #[derive(Accounts)]
 pub struct Mint<'info> {
     #[account(
-        init, 
+        init,
         payer = authority,
         seeds = [b"MINT", authority.key().as_ref()],
         bump,
@@ -82,7 +86,7 @@ pub struct Mint<'info> {
 #[instruction(subject: Pubkey, amount: u64)]
 pub struct BuyShares<'info> {
     #[account(
-        init_if_needed, 
+        init_if_needed,
         payer = authority,
         seeds = [b"TOKEN", authority.key().as_ref(), subject.as_ref()],
         bump,
@@ -121,7 +125,7 @@ pub struct BuyShares<'info> {
 #[instruction(subject: Pubkey, amount: u64)]
 pub struct SellShares<'info> {
     #[account(
-        mut, 
+        mut,
         seeds = [b"TOKEN", authority.key().as_ref(), subject.as_ref()],
         bump,
     )]
@@ -151,6 +155,8 @@ pub struct SellShares<'info> {
     #[account(mut)]
     pub authority: Signer<'info>,
 
+    // JON: not important, but this account isn't used at all here since you're
+    // just subtracting and adding the lamports directly
     pub system_program: Program<'info, System>,
 }
 
@@ -167,8 +173,12 @@ pub struct WithdrawFromProtocol<'info> {
     pub authority: Signer<'info>,
 
         /// CHECK: This is used to fetch rent exemption information
+    // JON: Up to you, but you can use `Rent::get()?`, similar to `Clock::get()?`,
+    // rather than requiring this account.
     pub rent: AccountInfo<'info>,
 
+    // JON: Not important, but this account isn't used at all since you're just
+    // directly moving lamports
     pub system_program: Program<'info, System>,
 }
 
@@ -190,6 +200,8 @@ pub struct WithdrawFromMint<'info> {
     pub system_program: Program<'info, System>,
 }
 
+// JON: It looks like there's no processor for this instruction -- is that
+// intended? I'm guessing `SellShares` does everything you need for this, correct?
 #[derive(Accounts)]
 pub struct WithdrawFromPot<'info> {
     #[account(
