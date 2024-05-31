@@ -2,19 +2,11 @@ use anchor_lang::prelude::*;
 
 // The pot account holds the total amount of lamports in the pot
 #[account]
-pub struct PotAccount {
-    // JON: Since you just end up writing the authority ID, which is hard-coded
-    // in the program, you could completely remove the state on this account.
-    pub authority: Pubkey,
-}
+pub struct PotAccount {}
 
 // The protocol account holds the protocol fees
 #[account]
-pub struct ProtocolAccount {
-    // JON: Since you just end up writing the authority ID, which is hard-coded
-    // in the program, you could completely remove all state on this account.
-    pub authority: Pubkey,
-}
+pub struct ProtocolAccount {}
 
 // The mint holds number of tokens that exist for a subject and their fee income from transactions
 #[account]
@@ -39,7 +31,7 @@ pub struct Initialize<'info> {
         payer = authority,
         seeds = [b"POT"],
         bump,
-        space = 8 + 32 // 32 (authority)
+        space = 8 // no fields
     )]
     pub pot: Account<'info, PotAccount>,
 
@@ -48,7 +40,7 @@ pub struct Initialize<'info> {
         payer = authority,
         seeds = [b"PROTOCOL"],
         bump,
-        space = 8 + 32 // 32 (authority)
+        space = 8 // no fields
     )]
     pub protocol: Account<'info, ProtocolAccount>,
 
@@ -57,6 +49,7 @@ pub struct Initialize<'info> {
 
     pub system_program: Program<'info, System>,
 }
+
 
 #[derive(Accounts)]
 pub struct Mint<'info> {
@@ -154,10 +147,6 @@ pub struct SellShares<'info> {
 
     #[account(mut)]
     pub authority: Signer<'info>,
-
-    // JON: not important, but this account isn't used at all here since you're
-    // just subtracting and adding the lamports directly
-    pub system_program: Program<'info, System>,
 }
 
 #[derive(Accounts)]
@@ -171,15 +160,6 @@ pub struct WithdrawFromProtocol<'info> {
 
     #[account(mut)]
     pub authority: Signer<'info>,
-
-        /// CHECK: This is used to fetch rent exemption information
-    // JON: Up to you, but you can use `Rent::get()?`, similar to `Clock::get()?`,
-    // rather than requiring this account.
-    pub rent: AccountInfo<'info>,
-
-    // JON: Not important, but this account isn't used at all since you're just
-    // directly moving lamports
-    pub system_program: Program<'info, System>,
 }
 
 #[derive(Accounts)]
@@ -190,26 +170,6 @@ pub struct WithdrawFromMint<'info> {
         bump,
     )]
     pub mint: Account<'info, MintAccount>,
-
-    #[account(mut)]
-    pub authority: Signer<'info>,
-
-    /// CHECK: This is used to fetch rent exemption information
-    pub rent: AccountInfo<'info>,
-
-    pub system_program: Program<'info, System>,
-}
-
-// JON: It looks like there's no processor for this instruction -- is that
-// intended? I'm guessing `SellShares` does everything you need for this, correct?
-#[derive(Accounts)]
-pub struct WithdrawFromPot<'info> {
-    #[account(
-        mut,
-        seeds = [b"POT"],
-        bump,
-    )]
-    pub pot: Account<'info, PotAccount>,
 
     #[account(mut)]
     pub authority: Signer<'info>,

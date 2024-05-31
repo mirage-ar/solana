@@ -131,7 +131,6 @@ describe("WITHDRAW", () => {
         protocol: protocolPubkey,
         authority: owner.publicKey,
         rent: anchor.web3.SYSVAR_RENT_PUBKEY, // Add the missing 'rent' property
-        systemProgram: SystemProgram.programId,
       },
       signers: [owner],
     });
