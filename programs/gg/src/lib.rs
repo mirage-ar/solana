@@ -62,7 +62,7 @@ pub mod gg {
         require!(supply > 0, GGError::InvalidSupply);
 
         // get buy price
-        let price = get_buy_price(supply, amount);
+        let price = get_buy_price(supply, amount).ok_or(GGError::MathOverflow)?;
 
         msg!("price: {}", lamports_to_sol(price));
         msg!("subject: {}", subject);
@@ -161,7 +161,7 @@ pub mod gg {
         require!(supply > amount, GGError::InvalidSupply);
 
         // get sell price
-        let price = get_sell_price(supply, amount);
+        let price = get_sell_price(supply, amount).ok_or(GGError::MathOverflow)?;
 
         msg!("price: {}", lamports_to_sol(price));
         msg!("subject: {}", subject);
