@@ -1,7 +1,5 @@
 use anchor_lang::prelude::*;
-use anchor_lang::solana_program::native_token::{
-    lamports_to_sol, sol_to_lamports, LAMPORTS_PER_SOL,
-};
+use anchor_lang::solana_program::native_token::{lamports_to_sol, LAMPORTS_PER_SOL};
 use anchor_lang::solana_program::program::invoke;
 use anchor_lang::solana_program::system_instruction;
 use anchor_lang::solana_program::sysvar::rent::Rent;
@@ -12,7 +10,7 @@ pub mod utils;
 
 use crate::{error::*, state::*, utils::*};
 
-declare_id!("4NZwzHq6bS1LqhUPPr7LjDz5aV18CYugg6PSx6GBXgDe");
+declare_id!("FeLN737SaQbjDAE7TfTP5QcgmS9zqeoEcYrU4umwZxxb");
 
 #[program]
 pub mod gg {
@@ -32,7 +30,7 @@ pub mod gg {
         mint.subject = authority.key();
 
         // transfer 0.5 SOL from authority to protocol
-        let amount = sol_to_lamports(0.5);
+        let amount = MINT_FEE;
         let transfer_instruction =
             system_instruction::transfer(&authority.key(), &protocol.key(), amount);
         invoke(
@@ -62,7 +60,7 @@ pub mod gg {
         require!(supply > 0, GGError::InvalidSupply);
 
         // get buy price
-        let price = get_buy_price(supply, amount).ok_or(GGError::MathOverflow)?;
+        let price = get_buy_price(supply, amount);
 
         msg!("price: {}", lamports_to_sol(price));
         msg!("subject: {}", subject);
@@ -161,7 +159,7 @@ pub mod gg {
         require!(supply > amount, GGError::InvalidSupply);
 
         // get sell price
-        let price = get_sell_price(supply, amount).ok_or(GGError::MathOverflow)?;
+        let price = get_sell_price(supply, amount);
 
         msg!("price: {}", lamports_to_sol(price));
         msg!("subject: {}", subject);
@@ -209,8 +207,7 @@ pub mod gg {
                     .ok_or(GGError::MathOverflow)?
                     .checked_sub(protocol_fee)
                     .ok_or(GGError::MathOverflow)?,
-            )
-            .ok_or(GGError::MathOverflow)?;
+            ).ok_or(GGError::MathOverflow)?;
 
         // Decrease token amount in token account
         require!(token.amount >= amount, GGError::InsufficientShares);
@@ -273,8 +270,7 @@ pub mod gg {
         let mint = &mut ctx.accounts.mint;
 
         // Get the rent-exempt threshold
-        let rent_exempt_threshold =
-            Rent::get()?.minimum_balance(mint.to_account_info().data_len());
+        let rent_exempt_threshold = Rent::get()?.minimum_balance(mint.to_account_info().data_len());
 
         // Check that the provided authority key matches the one stored in the mint
         require!(authority.key() == mint.subject, GGError::Unauthorized);

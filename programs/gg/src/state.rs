@@ -50,7 +50,6 @@ pub struct Initialize<'info> {
     pub system_program: Program<'info, System>,
 }
 
-
 #[derive(Accounts)]
 pub struct Mint<'info> {
     #[account(
