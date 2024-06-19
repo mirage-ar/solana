@@ -12,4 +12,6 @@ pub enum GGError {
     InsufficientFunds,
     #[msg("Insufficient shares.")]
     InsufficientShares,
+    #[msg("Math overflow.")]
+    MathOverflow,
 }

@@ -1,8 +1,10 @@
 use anchor_lang::prelude::*;
+use anchor_lang::solana_program::native_token::{
+    lamports_to_sol, sol_to_lamports, LAMPORTS_PER_SOL,
+};
 use anchor_lang::solana_program::program::invoke;
 use anchor_lang::solana_program::system_instruction;
 use anchor_lang::solana_program::sysvar::rent::Rent;
-use std::str::FromStr;
 
 pub mod error;
 pub mod state;
@@ -16,30 +18,8 @@ declare_id!("4NZwzHq6bS1LqhUPPr7LjDz5aV18CYugg6PSx6GBXgDe");
 pub mod gg {
     use super::*;
 
-    // JON: As mentioned earlier, you could completely remove this if you don't
-    // store the authority on the accounts, and always check against `OWNER_PUBKEY`
-    // directly.
-    pub fn initialize(ctx: Context<Initialize>) -> Result<()> {
-        // Check if the caller is the owner
-        let authority = &mut ctx.accounts.authority;
-
-        // JON: decoding base58 strings on-chain can take up a lot of compute,
-        // so you're better off using `declare_id!` to do this before program
-        // compilation. See what I did in `utils.rs`.
-        //let owner_pubkey = Pubkey::from_str(owner::id).unwrap();
-
-        // Check if the caller is the owner
-        require!(authority.key() == owner::id(), GGError::Unauthorized);
-
-        let pot = &mut ctx.accounts.pot;
-        let protocol = &mut ctx.accounts.protocol;
-
-        // set pot and protocol authority
-        pot.authority = authority.key();
-        protocol.authority = authority.key();
-
+    pub fn initialize(_ctx: Context<Initialize>) -> Result<()> {
         msg!("Pot and Protocol accounts initialized");
-
         Ok(())
     }
 
@@ -82,7 +62,7 @@ pub mod gg {
         require!(supply > 0, GGError::InvalidSupply);
 
         // get buy price
-        let price = get_buy_price(supply, amount);
+        let price = get_buy_price(supply, amount).ok_or(GGError::MathOverflow)?;
 
         msg!("price: {}", lamports_to_sol(price));
         msg!("subject: {}", subject);
@@ -93,11 +73,17 @@ pub mod gg {
 
         msg!("timestamp: {}", current_timestamp);
 
-        // JON: !!!IMPORTANT!!! Use checked math here to avoid overflowing and
-        // making it possible to exploit.
-        // calculate fees
-        let protocol_fee = price * PROTOCOL_FEE_PERCENT / LAMPORTS_PER_SOL;
-        let subject_fee = price * SUBJECT_FEE_PERCENT / LAMPORTS_PER_SOL;
+        // Use checked math to avoid overflow
+        let protocol_fee = price
+            .checked_mul(PROTOCOL_FEE_PERCENT)
+            .ok_or(GGError::MathOverflow)?
+            .checked_div(LAMPORTS_PER_SOL)
+            .ok_or(GGError::MathOverflow)?;
+        let subject_fee = price
+            .checked_mul(SUBJECT_FEE_PERCENT)
+            .ok_or(GGError::MathOverflow)?
+            .checked_div(LAMPORTS_PER_SOL)
+            .ok_or(GGError::MathOverflow)?;
 
         // Ensure enough lamports are provided
         require!(
@@ -128,7 +114,7 @@ pub mod gg {
             ],
         )?;
 
-        // // transfer price from authority to pot
+        // Transfer price from authority to pot
         let transfer_instruction =
             system_instruction::transfer(&authority.key(), &pot.key(), price);
         invoke(
@@ -143,7 +129,10 @@ pub mod gg {
         // Determine if the token account is already initialized
         if token.amount > 0 || token.owner != Pubkey::default() {
             // Token account is already initialized, update it as needed
-            token.amount += amount;
+            token.amount = token
+                .amount
+                .checked_add(amount)
+                .ok_or(GGError::MathOverflow)?;
         } else {
             // Token account is not initialized, set initial values
             token.owner = authority.key();
@@ -151,9 +140,11 @@ pub mod gg {
             token.amount = amount;
         }
 
-        // JON: !!!IMPORTANT!!! Use checked math here too to be safe and avoid
-        // overflowing
-        mint.amount += amount;
+        // Use checked math to be safe and avoid overflow
+        mint.amount = mint
+            .amount
+            .checked_add(amount)
+            .ok_or(GGError::MathOverflow)?;
 
         Ok(())
     }
@@ -169,8 +160,8 @@ pub mod gg {
         let supply = mint.amount;
         require!(supply > amount, GGError::InvalidSupply);
 
-        // get buy price
-        let price = get_sell_price(supply, amount);
+        // get sell price
+        let price = get_sell_price(supply, amount).ok_or(GGError::MathOverflow)?;
 
         msg!("price: {}", lamports_to_sol(price));
         msg!("subject: {}", subject);
@@ -181,35 +172,58 @@ pub mod gg {
 
         msg!("timestamp: {}", current_timestamp);
 
-        // calculate fees
-        // JON: !!!IMPORTANT!!! use checked math here
-        let protocol_fee = price * PROTOCOL_FEE_PERCENT / LAMPORTS_PER_SOL;
-        let subject_fee = price * SUBJECT_FEE_PERCENT / LAMPORTS_PER_SOL;
-
-        // JON: The earlier check is the correct one -- since the mint is
-        // initialized with a supply of `1` but has no corresponding tokens,
-        // it's not correct for `mint.amount` to ever equal `0`.
-        require!(mint.amount >= amount, GGError::InsufficientShares);
+        // Use checked math to avoid overflow
+        let protocol_fee = price
+            .checked_mul(PROTOCOL_FEE_PERCENT)
+            .ok_or(GGError::MathOverflow)?
+            .checked_div(LAMPORTS_PER_SOL)
+            .ok_or(GGError::MathOverflow)?;
+        let subject_fee = price
+            .checked_mul(SUBJECT_FEE_PERCENT)
+            .ok_or(GGError::MathOverflow)?
+            .checked_div(LAMPORTS_PER_SOL)
+            .ok_or(GGError::MathOverflow)?;
 
         // Transfer fees
+        **pot.to_account_info().try_borrow_mut_lamports()? = pot
+            .to_account_info()
+            .lamports()
+            .checked_sub(price)
+            .ok_or(GGError::MathOverflow)?;
+        **mint.to_account_info().try_borrow_mut_lamports()? = mint
+            .to_account_info()
+            .lamports()
+            .checked_add(subject_fee)
+            .ok_or(GGError::MathOverflow)?;
+        **protocol.to_account_info().try_borrow_mut_lamports()? = protocol
+            .to_account_info()
+            .lamports()
+            .checked_add(protocol_fee)
+            .ok_or(GGError::MathOverflow)?;
+        **authority.to_account_info().try_borrow_mut_lamports()? = authority
+            .to_account_info()
+            .lamports()
+            .checked_add(
+                price
+                    .checked_sub(subject_fee)
+                    .ok_or(GGError::MathOverflow)?
+                    .checked_sub(protocol_fee)
+                    .ok_or(GGError::MathOverflow)?,
+            )
+            .ok_or(GGError::MathOverflow)?;
 
-        // transfer price from pot to authority
-        // JON: The runtime will stop you from doing something bad here since
-        // lamports need to be checked, but be sure to use checked math here too.
-        **pot.to_account_info().try_borrow_mut_lamports()? -= price;
-        **mint.to_account_info().try_borrow_mut_lamports()? += subject_fee;
-        **protocol.to_account_info().try_borrow_mut_lamports()? += protocol_fee;
-        **authority.to_account_info().try_borrow_mut_lamports()? +=
-            price - subject_fee - protocol_fee;
+        // Decrease token amount in token account
+        require!(token.amount >= amount, GGError::InsufficientShares);
+        token.amount = token
+            .amount
+            .checked_sub(amount)
+            .ok_or(GGError::MathOverflow)?;
 
-        // decrease token amount in token account
-        // JON: !!!IMPORTANT!!! Be sure to check that `token.amount >= amount`
-        // or use checked math -- as it stands, without checked math, I can put
-        // a huge amount and steal everyone else's SOL from the pot :-)
-        token.amount -= amount;
-
-        // decrease share supply in mint account
-        mint.amount -= amount;
+        // Decrease share supply in mint account
+        mint.amount = mint
+            .amount
+            .checked_sub(amount)
+            .ok_or(GGError::MathOverflow)?;
 
         Ok(())
     }
@@ -217,20 +231,15 @@ pub mod gg {
     pub fn withdraw_from_protocol(ctx: Context<WithdrawFromProtocol>) -> Result<()> {
         let authority = &mut ctx.accounts.authority;
         let protocol = &mut ctx.accounts.protocol;
-        let owner_pubkey = owner::id();
-        let rent = &ctx.accounts.rent;
 
         // Check if the caller is the owner
-        // JON: not important, but same as earlier, since the `owner_pubkey` is
-        // hard-coded in the source code, the `protocol.authority` field is
-        // totally unused.
-        require!(authority.key() == owner_pubkey, GGError::Unauthorized);
+        require!(authority.key() == owner::id(), GGError::Unauthorized);
 
         // Get the rent-exempt threshold
         let rent_exempt_threshold =
-            Rent::from_account_info(rent)?.minimum_balance(protocol.to_account_info().data_len());
+            Rent::get()?.minimum_balance(protocol.to_account_info().data_len());
 
-        // Get the total amount of lamports in the mint account
+        // Get the total amount of lamports in the protocol account
         let total_lamports = protocol.to_account_info().lamports();
         require!(
             total_lamports > rent_exempt_threshold,
@@ -238,19 +247,23 @@ pub mod gg {
         );
 
         // Calculate the amount that can be safely withdrawn
-        let withdrawable_amount = total_lamports - rent_exempt_threshold;
+        let withdrawable_amount = total_lamports
+            .checked_sub(rent_exempt_threshold)
+            .ok_or(GGError::MathOverflow)?;
 
         msg!("Protocol balance: {}", withdrawable_amount);
-        msg!("Protocol owner: {}", protocol.authority);
 
-        // Ensure enough lamports are provided
-        // JON: not important, but since you've already checked
-        // `total_lamports > rent_exempt_threshold`, this check is unnecessary.
-        require!(withdrawable_amount > 0, GGError::InsufficientFunds);
-
-        // Transfer fees
-        **protocol.to_account_info().try_borrow_mut_lamports()? -= withdrawable_amount;
-        **authority.try_borrow_mut_lamports()? += withdrawable_amount;
+        // Transfer withdrawable amount to the authority account
+        **protocol.to_account_info().try_borrow_mut_lamports()? = protocol
+            .to_account_info()
+            .lamports()
+            .checked_sub(withdrawable_amount)
+            .ok_or(GGError::MathOverflow)?;
+        **authority.try_borrow_mut_lamports()? = authority
+            .to_account_info()
+            .lamports()
+            .checked_add(withdrawable_amount)
+            .ok_or(GGError::MathOverflow)?;
 
         Ok(())
     }
@@ -258,15 +271,13 @@ pub mod gg {
     pub fn withdraw_from_mint(ctx: Context<WithdrawFromMint>) -> Result<()> {
         let authority = &mut ctx.accounts.authority;
         let mint = &mut ctx.accounts.mint;
-        let rent = &ctx.accounts.rent;
 
         // Get the rent-exempt threshold
         let rent_exempt_threshold =
-            Rent::from_account_info(rent)?.minimum_balance(mint.to_account_info().data_len());
+            Rent::get()?.minimum_balance(mint.to_account_info().data_len());
 
-        // JON: !!!IMPORTANT!!! you *must* check that the provided `authority`
-        // key matches the one stored in the mint. As it stands, anyone can call
-        // this instruction to withdraw SOL from the mint.
+        // Check that the provided authority key matches the one stored in the mint
+        require!(authority.key() == mint.subject, GGError::Unauthorized);
 
         // Get the total amount of lamports in the mint account
         let total_lamports = mint.to_account_info().lamports();
@@ -276,15 +287,25 @@ pub mod gg {
         );
 
         // Calculate the amount that can be safely withdrawn
-        let withdrawable_amount = total_lamports - rent_exempt_threshold;
+        let withdrawable_amount = total_lamports
+            .checked_sub(rent_exempt_threshold)
+            .ok_or(GGError::MathOverflow)?;
 
         msg!("Mint balance: {}", total_lamports);
         msg!("Mint owner: {}", mint.subject);
         msg!("Withdrawable amount: {}", withdrawable_amount);
 
         // Transfer the withdrawable amount to the authority account
-        **mint.to_account_info().try_borrow_mut_lamports()? -= withdrawable_amount;
-        **authority.try_borrow_mut_lamports()? += withdrawable_amount;
+        **mint.to_account_info().try_borrow_mut_lamports()? = mint
+            .to_account_info()
+            .lamports()
+            .checked_sub(withdrawable_amount)
+            .ok_or(GGError::MathOverflow)?;
+        **authority.try_borrow_mut_lamports()? = authority
+            .to_account_info()
+            .lamports()
+            .checked_add(withdrawable_amount)
+            .ok_or(GGError::MathOverflow)?;
 
         Ok(())
     }
