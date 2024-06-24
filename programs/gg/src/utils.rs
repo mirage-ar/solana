@@ -3,7 +3,7 @@ use anchor_lang::solana_program::native_token::LAMPORTS_PER_SOL;
 // CONSTANTS
 pub mod owner {
     use anchor_lang::prelude::*;
-    declare_id!("FeLN737SaQbjDAE7TfTP5QcgmS9zqeoEcYrU4umwZxxb");
+    declare_id!("Ct9GFe2JSfucDJu7YPZ5dAbwANNkpKviiHxBAFx3Ypis");
 }
 
 pub const PROTOCOL_FEE_PERCENT: u64 = 50_000_000;

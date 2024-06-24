@@ -84,7 +84,6 @@ export const sell = async (user: Keypair, subject: PublicKey, amount: number, pr
       protocol: protocolPubkey,
       pot: potPubkey,
       authority: user.publicKey,
-      systemProgram: SystemProgram.programId,
     },
     signers: [user],
   });
@@ -102,7 +101,6 @@ export const withdrawFromMint = async (user: Keypair, program: Program<Gg>) => {
     accounts: {
       mint: mintPubkey,
       authority: user.publicKey,
-      rent: anchor.web3.SYSVAR_RENT_PUBKEY,
       systemProgram: SystemProgram.programId,
     },
     signers: [user],

@@ -172,6 +172,4 @@ pub struct WithdrawFromMint<'info> {
 
     #[account(mut)]
     pub authority: Signer<'info>,
-
-    pub system_program: Program<'info, System>,
 }

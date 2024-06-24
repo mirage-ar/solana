@@ -10,7 +10,7 @@ pub mod utils;
 
 use crate::{error::*, state::*, utils::*};
 
-declare_id!("FeLN737SaQbjDAE7TfTP5QcgmS9zqeoEcYrU4umwZxxb");
+declare_id!("4NZwzHq6bS1LqhUPPr7LjDz5aV18CYugg6PSx6GBXgDe");
 
 #[program]
 pub mod gg {
